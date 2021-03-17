@@ -1,5 +1,6 @@
 from re import split
 from tkinter import *
+from tkinter import ttk
 from tkinter.ttk import *
 from tkinter import messagebox
 import threading
@@ -7,32 +8,77 @@ import tkinter as tk
 import requests
 from bs4 import BeautifulSoup
 import os 
+import mysql.connector
+import datetime
+
+mydb = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="",
+    database="priceanalyzer"
+)
+cursor = mydb.cursor(buffered=True)
+
+def data_input(categories, title, sales, images, price, idmlm,trackingId, customerid, description ):
+    try:
+        lastrundate=datetime.datetime.now()
+        cursor.execute("SELECT * FROM dataproducts WHERE IDMLM='" + idmlm +"'")
+
+        myresult = cursor.fetchall()
+        if myresult:
+            for x in myresult:
+                sql = "UPDATE dataproducts SET sales = '"+ str(sales) +"', price = '"+ str(price) +"', lastrundate = '"+ str(lastrundate) +"' WHERE IDMLM = '"+ idmlm +"'"
+                print(sql)
+                cursor.execute(sql)
+                mydb.commit()
+        else:
+            sql = "INSERT INTO dataproducts (IDMLM, trackid, title, description, category, price, customerid, sales, lastrundate ,images) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+            print(sql)
+            val = (idmlm, trackingId, title, description, categories, price, customerid,  sales,  lastrundate ,images  )
+            cursor.execute(sql, val)
+            mydb.commit()
+            T.insert(tk.END, "   Saved data in database! \n")
+            T.see(tk.END)
+            
+    except Exception as e:
+        print(str(e))
+        T.insert(tk.END, str(e) + "\n")
+        T.see(tk.END)
+
 
 mainWindow = Tk()
 mainWindow.title("Price Analyzer")
-mainWindow.geometry('700x500')
+mainWindow.geometry('700x400')
 mainWindow.resizable(False, False)
-mainWindowTitle = Label(mainWindow, text = "Price  Analyzer", font = ("Arial Bold", 20))
-mainWindowTitle.place(x = 250,y = 30)
+mainWindowTitle = Label(mainWindow, text = "Price  Analyzer", font = ("Arial Bold",30))
+mainWindowTitle.place(x = 200,y = 20)
 
 customidLBl = Label(mainWindow, text = "Customer Id", font = ("Arial", 12))
-customidLBl.place(x = 30,y = 80)
+customidLBl.place(x = 30,y = 83)
 
 customidTxt=Entry(mainWindow, width=40)
 customidTxt.focus()
-customidTxt.place(x = 150,y = 80)
+customidTxt.place(x = 150,y = 83)
+customid=""
 
-T = tk.Text(mainWindow, height=20, width=82)
+T = tk.Text(mainWindow, height=15, width=82)
 T.place(x = 20,y = 120)
-
+progressbar = ttk.Progressbar(mainWindow,orient=HORIZONTAL,length=660,mode='determinate')
+progressbar.place(x=20, y=365)
+progressbar['value']=0
+mainWindow.update_idletasks()
 def thread_function():
+    global customid
+    progressval=0
+    count=0
+    T.insert(tk.END, "Script Starting \n")
     customid=customidTxt.get()
+    customid=customid.strip(" ")
     openUrl = "https://listado.mercadolibre.com.mx/_CustId_" + customid
     html = requests.get(openUrl)
     soup = BeautifulSoup(html.text,"html.parser")
     cc=0
     divs  = soup.find_all('div', { "class" : "ui-search-result__image"})
-    T.insert(tk.END, "Script Starting \n")
     for div in divs:
         a  = div.find('a')
         href = a.get('href')
@@ -45,6 +91,8 @@ def thread_function():
         pricespans = pricediv.find("span",{"class", "price-tag ui-pdp-price__part"})
         priceintspan = pricespans.find("span",{"class", "price-tag-fraction"})
         pricecentspan = pricespans.find("span",{"class", "price-tag-cents"})
+        descriptiontag = productsoup.find("p", {"class", "ui-pdp-description__content"})
+        description = descriptiontag.get_text()
         pricefraction = priceintspan.get_text()
         # pricecent = pricecentspan.get_text()
         IDMLMStr = href.rsplit("/")[3]
@@ -61,17 +109,20 @@ def thread_function():
         idmlm = preIDMLM[0] + "-" + preIDMLM[1]
 
         print("Target product => "+ title + "( Processing )")
-        T.insert(tk.END, "New product Processing \n")
-        T.insert(tk.END, "  " + title +" \n")
-
+        T.insert(tk.END, "  \n")
+        T.insert(tk.END, "----   New product Processing    ----\n")
+        T.insert(tk.END, "  \"" + title +"\" \n")
+        T.see(tk.END)
         filename=""
         count =1
         imgDiv = productsoup.find_all('figure',{"class","ui-pdp-gallery__figure"})
         
         if not os.path.isdir(customid):
             os.mkdir(customid)
-        print("   Download product images => ", idmlm , "( Start )")
+        print("     Download product images => ", idmlm , "( Start )")
         T.insert(tk.END, "   Download product images => "+ idmlm + " Start \n")
+        T.see(tk.END)
+
         fcount=0
         for img in imgDiv:
             images = img.find("img")
@@ -90,30 +141,68 @@ def thread_function():
                     f.write(r.content) 
                     fcount += 1
                     print("       ", filename , "( Done ) ", fcount)
-                    T.insert(tk.END, "       " + filename + " Done " + str(fcount) + " \n")
+                    T.insert(tk.END, "       " + filename + " \n")
+                    T.see(tk.END)
+                    progressval += 0.5
+                    progressbar['value']=progressval                    
+                    mainWindow.update_idletasks()
+                    
                 count += 1                
             except:                
                 a = "null"            
         cc += 1
         print("   Download product images => ", idmlm , "( Done ) ", count - 1)
-        T.insert(tk.END, "   Download product images => "+ idmlm + " Done"+ str((count - 1))+ " \n")
+        T.insert(tk.END, "   Download product images finished! \n")
+        T.see(tk.END)
+        print("  Saving the data in database")
+        T.insert(tk.END, "   Saving the data in database \n")
+        T.see(tk.END)
+        images = customid + "/" + idmlm + "/" + idmlm +"&"+str(count-1) + ".jpg"
+        data_input(categories, title, sales, images, price, idmlm, trackingId, customid, description)
         print("Target product => ", title , "( Done )") 
-        T.insert(tk.END, "  "+ title + " Done \n")
-    print("done")
+        T.insert(tk.END, "  Target product  >  Done <   \n")
+        T.see(tk.END)
+    if count<2:
+        print("fail")
+        T.insert(tk.END, " >>>>    Fail!   <<<< \n")
+        T.see(tk.END)
+    else:
+        print("done")
+        T.insert(tk.END, " >>>>    Finished   <<<< \n")
+        T.see(tk.END)
+    progressbar['value']=100                    
+    startbtn["state"] = "normal"
+    mainWindow.update_idletasks()
+                    
 
 def startclicked():
+    global cur_thread
     x = threading.Thread(target = thread_function, args = (), daemon=True)
     cur_thread = x
-    
-    x.start()
+    if customidTxt.get() != "" and customidTxt.get() !=" ":
+        startbtn["state"] = "disabled"
+        x.start()
+    else:
+        messagebox.showerror("Error!", "Customer id is empty! please enter the custom id.")
+        customidTxt.focus()
         
 def endclicked():
     mainWindow.destroy()
+    
+# def stop():
+#     # global cur_thread
+#     x = cur_thread
+#     x.do_run = False
+#     x.join()
 
 startbtn = Button(mainWindow, text="Start", command=startclicked)
-startbtn.place(x = 420,y = 78)
+startbtn.place(x = 410,y = 82)
+
+# stopbtn = Button(mainWindow, text="Stop", command=stop)
+# stopbtn.place(x = 500,y = 82)
 
 endbtn = Button(mainWindow, text="Exit", command=endclicked)
-endbtn.place(x = 520,y = 78)
+endbtn.place(x = 590,y = 82)
+
 
 mainWindow.mainloop()
