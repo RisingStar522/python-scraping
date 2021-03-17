@@ -36,7 +36,6 @@ def thread_function():
     for div in divs:
         a  = div.find('a')
         href = a.get('href')
-        T.insert(tk.END, " \n")
         productlink = href
         producthtml = requests.get(productlink)
         productsoup = BeautifulSoup(producthtml.text, "html.parser")
