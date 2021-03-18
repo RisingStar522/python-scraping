@@ -10,12 +10,14 @@ from bs4 import BeautifulSoup
 import os 
 import mysql.connector
 import datetime
+from mysql.connector.locales.eng import client_error
 
 mydb = mysql.connector.connect(
     host="localhost",
     user="root",
-    password="",
-    database="priceanalyzer"
+    password="Webmaster3d*",
+    database="priceanalyzer",
+    port = 3513
 )
 cursor = mydb.cursor(buffered=True)
 
