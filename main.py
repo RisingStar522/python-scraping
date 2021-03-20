@@ -5,12 +5,14 @@ from tkinter.ttk import *
 from tkinter import messagebox
 import threading
 import tkinter as tk
+from dns.rdatatype import NULL
 import requests
 from bs4 import BeautifulSoup
 import os 
 import mysql.connector
 import datetime
 from mysql.connector.locales.eng import client_error
+
 
 mydb = mysql.connector.connect(
     host="localhost",
@@ -21,7 +23,7 @@ mydb = mysql.connector.connect(
 )
 cursor = mydb.cursor(buffered=True)
 
-def data_input(categories, title, sales, images, price, idmlm,trackingId, customerid, description ):
+def data_input(categories, title, sales, images, price, idmlm,trackingId, customerid, description, brand, model ):
     try:
         lastrundate=datetime.datetime.now()
         cursor.execute("SELECT * FROM dataproducts WHERE IDMLM='" + idmlm +"'")
@@ -34,9 +36,9 @@ def data_input(categories, title, sales, images, price, idmlm,trackingId, custom
                 cursor.execute(sql)
                 mydb.commit()
         else:
-            sql = "INSERT INTO dataproducts (IDMLM, trackid, title, description, category, price, customerid, sales, lastrundate ,images) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+            sql = "INSERT INTO dataproducts (IDMLM, trackid, title, description, category, price, customerid, sales, lastrundate, images, brand, model) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
             print(sql)
-            val = (idmlm, trackingId, title, description, categories, price, customerid,  sales,  lastrundate ,images  )
+            val = (idmlm, trackingId, title, str(description), categories, price, customerid,  sales,  lastrundate ,images, brand, model)
             cursor.execute(sql, val)
             mydb.commit()
             T.insert(tk.END, "   Saved data in database! \n")
@@ -51,7 +53,13 @@ def data_input(categories, title, sales, images, price, idmlm,trackingId, custom
 mainWindow = Tk()
 mainWindow.title("Price Analyzer")
 mainWindow.geometry('700x400')
+windowWidth = 700
+windowHeight = 400
+positionRight = int(mainWindow.winfo_screenwidth()/2 - windowWidth/2)
+positionDown = int(mainWindow.winfo_screenheight()/2 - windowHeight/2)
+mainWindow.geometry("+{}+{}".format(positionRight, positionDown))
 mainWindow.resizable(False, False)
+
 mainWindowTitle = Label(mainWindow, text = "Price  Analyzer", font = ("Arial Bold",30))
 mainWindowTitle.place(x = 200,y = 20)
 
@@ -65,9 +73,13 @@ customid=""
 
 T = tk.Text(mainWindow, height=15, width=82)
 T.place(x = 20,y = 120)
-progressbar = ttk.Progressbar(mainWindow,orient=HORIZONTAL,length=660,mode='determinate')
-progressbar.place(x=20, y=365)
+progressbar = ttk.Progressbar(mainWindow,orient=HORIZONTAL,length=610,mode='determinate')
+progressbar.place(x=70, y=365)
 progressbar['value']=0
+
+pagenumlbl = Label(mainWindow, text = "1 / 1", font = ("Arial", 12))
+pagenumlbl.place(x = 20,y = 365)
+
 mainWindow.update_idletasks()
 def thread_function():
     global customid
@@ -76,102 +88,149 @@ def thread_function():
     T.insert(tk.END, "Script Starting \n")
     customid=customidTxt.get()
     customid=customid.strip(" ")
-    openUrl = "https://listado.mercadolibre.com.mx/_CustId_" + customid
+    openUrl = "https://listado.mercadolibre.com.mx/_CustId_"  + customid
     html = requests.get(openUrl)
-    soup = BeautifulSoup(html.text,"html.parser")
+    souppre = BeautifulSoup(html.text,"html.parser")
     cc=0
-    divs  = soup.find_all('div', { "class" : "ui-search-result__image"})
-    for div in divs:
-        a  = div.find('a')
-        href = a.get('href')
-        productlink = href
-        producthtml = requests.get(productlink)
-        productsoup = BeautifulSoup(producthtml.text, "html.parser")
-        texts = productsoup.find_all("a",{"class": "andes-breadcrumb__link"})
-        salestag = productsoup.find("span",{"class":"ui-pdp-subtitle"}).get_text()
-        pricediv = productsoup.find("div",{"class", "ui-pdp-container__row ui-pdp-container__row--price"})
-        pricespans = pricediv.find("span",{"class", "price-tag ui-pdp-price__part"})
-        priceintspan = pricespans.find("span",{"class", "price-tag-fraction"})
-        pricecentspan = pricespans.find("span",{"class", "price-tag-cents"})
-        descriptiontag = productsoup.find("p", {"class", "ui-pdp-description__content"})
-        description = descriptiontag.get_text()
-        pricefraction = priceintspan.get_text()
-        # pricecent = pricecentspan.get_text()
-        IDMLMStr = href.rsplit("/")[3]
-        preIDMLM = IDMLMStr.rsplit("-")
-        category=""
-        for text in texts:
-            category = category+"-"+ text.get_text()
+    k=0
+    pagenationA  = souppre.find_all('a', { "class" : "andes-pagination__link"})
+    pagecount=0
+    nopagenum = pagenationA
+    if pagenationA == NULL:
+        pagenationA = openUrl
+    elif len(pagenationA) ==0:
+        pagenationA = [openUrl]
 
-        categories = category[1:]
-        trackingId =href.rsplit("tracking_id=")[1]
-        title = productsoup.find("h1",{"class":"ui-pdp-title"}).get_text()
-        sales = salestag.split()[2]
-        price = pricefraction+"." #+pricecent
-        idmlm = preIDMLM[0] + "-" + preIDMLM[1]
+    for pagenation in pagenationA:
+        pagecount+=1
+        if pagecount==len(pagenationA):
+            if len(pagenationA)!=1:
+                break
+        if len(nopagenum)==0:
+            pages = pagenation
+        else:
+            pages = pagenation.get('href')
+        itemcount = 0
+        progressval = 0
+        pagenumlbl['text']=str(pagecount) + " / " + str(len(pagenationA)-1)
+        html2 = requests.get(pages)
+        soup = BeautifulSoup(html2.text,"html.parser")
+        divs  = soup.find_all('div', { "class" : "ui-search-result__image"})
+        for div in divs:
+            divCount = len(divs)
+            progressbarStepVal = 100 / divCount
+            a  = div.find('a')
+            href = a.get('href')
+            productlink = href
+            producthtml = requests.get(productlink)
+            productsoup = BeautifulSoup(producthtml.text, "html.parser")
+            texts = productsoup.find_all("a",{"class": "andes-breadcrumb__link"})
+            salestag = productsoup.find("span",{"class":"ui-pdp-subtitle"}).get_text()
+            pricediv = productsoup.find("div",{"class", "ui-pdp-container__row ui-pdp-container__row--price"})
+            pricespans = pricediv.find("span",{"class", "price-tag ui-pdp-price__part"})
+            priceintspan = pricespans.find("span",{"class", "price-tag-fraction"})
+            pricecentspan = pricespans.find("span",{"class", "price-tag-cents"})
+            description = productsoup.find("p", {"class", "ui-pdp-description__content"})
+            pricefraction = priceintspan.get_text()
+            # pricecent = pricecentspan.get_text()  /// issues
+            IDMLMStr = href.rsplit("/")[3]
+            preIDMLM = IDMLMStr.rsplit("-")
+            idmlm = preIDMLM[0] + "-" + preIDMLM[1]
+            k += 1
+            itemcount += 1
+            print(k,": ",idmlm, " Current page : ",pagecount,"/",len(pagenationA)-1, itemcount,"/", divCount)
+            propertiesDiv = productsoup.find("div", {"class", "ui-pdp-specs__table"})
+            if propertiesDiv:
+                propertiesth=propertiesDiv.find_all("th")
+                propertiestd=propertiesDiv.find_all("td")
+                indx=0
+                for th in propertiesth:
+                    if th.get_text()=="Marca":
+                        brand = propertiestd[indx].get_text()
+                    elif th.get_text()=="Modelo":
+                        model = propertiestd[indx].get_text()
+                    indx+=1
+            else:
+                brand="Null"
+                model="Null"
+            category=""
+            for text in texts:
+                category = category+"-"+ text.get_text()
+            categories = category[1:]
+            trackingId =href.rsplit("tracking_id=")[1]
+            title = productsoup.find("h1",{"class":"ui-pdp-title"}).get_text()
+            salesarray = salestag.split()
+            # print("---------------------------------------------------", salesarray)
+            if len(salesarray)>1:
+                sales = salesarray[2]
+            else:
+                sales = 0
+            price = pricefraction+"." #+pricecent
 
-        print("Target product => "+ title + "( Processing )")
-        T.insert(tk.END, "  \n")
-        T.insert(tk.END, "----   New product Processing    ----\n")
-        T.insert(tk.END, "  \"" + title +"\" \n")
-        T.see(tk.END)
-        filename=""
-        count =1
-        imgDiv = productsoup.find_all('figure',{"class","ui-pdp-gallery__figure"})
-        
-        if not os.path.isdir(customid):
-            os.mkdir(customid)
-        print("     Download product images => ", idmlm , "( Start )")
-        T.insert(tk.END, "   Download product images => "+ idmlm + " Start \n")
-        T.see(tk.END)
+            print("Target product => "+ title + "( Processing )")
+            T.insert(tk.END, "  \n")
+            T.insert(tk.END, "----   New product Processing    ----\n")
+            T.insert(tk.END, "  \"" + title +"\" \n")
+            T.see(tk.END)
+            filename=""
+            count =1
+            imgDiv = productsoup.find_all('figure',{"class","ui-pdp-gallery__figure"})
+            
+            if not os.path.isdir(customid):
+                os.mkdir(customid)
+            print("     Download product images => ", idmlm , "( Start )")
+            T.insert(tk.END, "   Download product images => "+ idmlm + " Start \n")
+            T.see(tk.END)
 
-        fcount=0
-        for img in imgDiv:
-            images = img.find("img")
-            try:
-                pri = images['src']
-                if not "https://" in pri:
-                    image_url = images['data-srcset']
-                    image_url = image_url.split()[0]
-                else:
-                    image_url = images['src']               
-                filename =customid + "/" + idmlm + "/" + idmlm + "_" + str(count) + ".jpg"
-                r = requests.get(image_url)
-                if not os.path.isdir(customid+"/"+idmlm):
-                    os.mkdir(customid+"/"+idmlm)
-                with open(filename, "wb+") as f: 
-                    f.write(r.content) 
-                    fcount += 1
-                    print("       ", filename , "( Done ) ", fcount)
-                    T.insert(tk.END, "       " + filename + " \n")
-                    T.see(tk.END)
-                    progressval += 0.5
-                    progressbar['value']=progressval                    
-                    mainWindow.update_idletasks()
-                    
-                count += 1                
-            except:                
-                a = "null"            
-        cc += 1
-        print("   Download product images => ", idmlm , "( Done ) ", count - 1)
-        T.insert(tk.END, "   Download product images finished! \n")
-        T.see(tk.END)
-        print("  Saving the data in database")
-        T.insert(tk.END, "   Saving the data in database \n")
-        T.see(tk.END)
-        images = customid + "/" + idmlm + "/" + idmlm +"&"+str(count-1) + ".jpg"
-        data_input(categories, title, sales, images, price, idmlm, trackingId, customid, description)
-        print("Target product => ", title , "( Done )") 
-        T.insert(tk.END, "  Target product  >  Done <   \n")
-        T.see(tk.END)
-    if count<2:
-        print("fail")
-        T.insert(tk.END, " >>>>    Fail!   <<<< \n")
-        T.see(tk.END)
-    else:
-        print("done")
-        T.insert(tk.END, " >>>>    Finished   <<<< \n")
-        T.see(tk.END)
+            fcount=0
+            for img in imgDiv:
+                images = img.find("img")
+                try:
+                    pri = images['src']
+                    if not "https://" in pri:
+                        image_url = images['data-srcset']
+                        image_url = image_url.split()[0]
+                    else:
+                        image_url = images['src']               
+                    filename =customid + "/" + idmlm + "/" + idmlm + "_" + str(count) + ".jpg"
+                    r = requests.get(image_url)
+                    if not os.path.isdir(customid+"/"+idmlm):
+                        os.mkdir(customid+"/"+idmlm)
+                    with open(filename, "wb+") as f: 
+                        f.write(r.content) 
+                        fcount += 1
+                        print("       ", filename , "( Done ) ", fcount)
+                        T.insert(tk.END, "       " + filename + " \n")
+                        T.see(tk.END)
+                        
+                    count += 1                
+                except:                
+                    a = "null"     
+            progressval += progressbarStepVal
+            progressbar['value'] = progressval                 
+            mainWindow.update_idletasks()       
+            cc += 1
+            print("   Download product images => ", idmlm , "( Done ) ", count - 1)
+            T.insert(tk.END, "   Download product images finished! \n")
+            T.see(tk.END)
+            print("  Saving the data in database")
+            T.insert(tk.END, "   Saving the data in database \n")
+            T.see(tk.END)
+            images = customid + "/" + idmlm + "/" + idmlm +"&"+str(count-1) + ".jpg" 
+            print(k,"  ", title)
+            data_input(categories, title, sales, images, price, idmlm, trackingId, customid, description, brand, model)
+            # print("Final result", " :: ",categories," :: ", title, " :: ",sales, " :: ",images, " :: ",price, " :: ",idmlm, " :: ",trackingId, " :: ",customid, " :: ","description", " :: ",brand, " :: ",model)
+            print("Target product => ", title , "( Done )") 
+            T.insert(tk.END, "  Target product  >  Done <   \n")
+            T.see(tk.END)
+        if count<2:
+            print("fail")
+            T.insert(tk.END, " >>>>    Fail!   <<<< \n")
+            T.see(tk.END)
+        else:
+            print("done")
+            T.insert(tk.END, " >>>>    Finished   <<<< \n")
+            T.see(tk.END)
     progressbar['value']=100                    
     startbtn["state"] = "normal"
     mainWindow.update_idletasks()
@@ -191,11 +250,11 @@ def startclicked():
 def endclicked():
     mainWindow.destroy()
     
-# def stop():
-#     # global cur_thread
-#     x = cur_thread
-#     x.do_run = False
-#     x.join()
+def stop():
+    # global cur_thread
+    x = cur_thread
+    x.do_run = False
+    x.join()
 
 startbtn = Button(mainWindow, text="Start", command=startclicked)
 startbtn.place(x = 410,y = 82)
