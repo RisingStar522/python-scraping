@@ -73,6 +73,7 @@ customid=""
 
 T = tk.Text(mainWindow, height=15, width=82)
 T.place(x = 20,y = 120)
+
 progressbar = ttk.Progressbar(mainWindow,orient=HORIZONTAL,length=610,mode='determinate')
 progressbar.place(x=70, y=365)
 progressbar['value']=0
@@ -84,6 +85,7 @@ mainWindow.update_idletasks()
 def thread_function():
     global customid
     progressval=0
+    pagecount=0
     count=0
     T.insert(tk.END, "Script Starting \n")
     customid=customidTxt.get()
@@ -91,10 +93,7 @@ def thread_function():
     openUrl = "https://listado.mercadolibre.com.mx/_CustId_"  + customid
     html = requests.get(openUrl)
     souppre = BeautifulSoup(html.text,"html.parser")
-    cc=0
-    k=0
     pagenationA  = souppre.find_all('a', { "class" : "andes-pagination__link"})
-    pagecount=0
     nopagenum = pagenationA
     if pagenationA == NULL:
         pagenationA = openUrl
@@ -110,7 +109,6 @@ def thread_function():
             pages = pagenation
         else:
             pages = pagenation.get('href')
-        itemcount = 0
         progressval = 0
         pagenumlbl['text']=str(pagecount) + " / " + str(len(pagenationA)-1)
         html2 = requests.get(pages)
@@ -129,16 +127,11 @@ def thread_function():
             pricediv = productsoup.find("div",{"class", "ui-pdp-container__row ui-pdp-container__row--price"})
             pricespans = pricediv.find("span",{"class", "price-tag ui-pdp-price__part"})
             priceintspan = pricespans.find("span",{"class", "price-tag-fraction"})
-            pricecentspan = pricespans.find("span",{"class", "price-tag-cents"})
             description = productsoup.find("p", {"class", "ui-pdp-description__content"})
             pricefraction = priceintspan.get_text()
-            # pricecent = pricecentspan.get_text()  /// issues
             IDMLMStr = href.rsplit("/")[3]
             preIDMLM = IDMLMStr.rsplit("-")
             idmlm = preIDMLM[0] + "-" + preIDMLM[1]
-            k += 1
-            itemcount += 1
-            print(k,": ",idmlm, " Current page : ",pagecount,"/",len(pagenationA)-1, itemcount,"/", divCount)
             propertiesDiv = productsoup.find("div", {"class", "ui-pdp-specs__table"})
             if propertiesDiv:
                 propertiesth=propertiesDiv.find_all("th")
@@ -159,14 +152,12 @@ def thread_function():
             categories = category[1:]
             trackingId =href.rsplit("tracking_id=")[1]
             title = productsoup.find("h1",{"class":"ui-pdp-title"}).get_text()
-            salesarray = salestag.split()
-            # print("---------------------------------------------------", salesarray)
+            salesarray = salestag.split()            
             if len(salesarray)>1:
                 sales = salesarray[2]
             else:
                 sales = 0
             price = pricefraction+"." #+pricecent
-
             print("Target product => "+ title + "( Processing )")
             T.insert(tk.END, "  \n")
             T.insert(tk.END, "----   New product Processing    ----\n")
@@ -209,7 +200,6 @@ def thread_function():
             progressval += progressbarStepVal
             progressbar['value'] = progressval                 
             mainWindow.update_idletasks()       
-            cc += 1
             print("   Download product images => ", idmlm , "( Done ) ", count - 1)
             T.insert(tk.END, "   Download product images finished! \n")
             T.see(tk.END)
@@ -217,9 +207,8 @@ def thread_function():
             T.insert(tk.END, "   Saving the data in database \n")
             T.see(tk.END)
             images = customid + "/" + idmlm + "/" + idmlm +"&"+str(count-1) + ".jpg" 
-            print(k,"  ", title)
+            print(count,"  ", title)
             data_input(categories, title, sales, images, price, idmlm, trackingId, customid, description, brand, model)
-            # print("Final result", " :: ",categories," :: ", title, " :: ",sales, " :: ",images, " :: ",price, " :: ",idmlm, " :: ",trackingId, " :: ",customid, " :: ","description", " :: ",brand, " :: ",model)
             print("Target product => ", title , "( Done )") 
             T.insert(tk.END, "  Target product  >  Done <   \n")
             T.see(tk.END)
@@ -250,20 +239,10 @@ def startclicked():
 def endclicked():
     mainWindow.destroy()
     
-def stop():
-    # global cur_thread
-    x = cur_thread
-    x.do_run = False
-    x.join()
-
 startbtn = Button(mainWindow, text="Start", command=startclicked)
 startbtn.place(x = 410,y = 82)
 
-# stopbtn = Button(mainWindow, text="Stop", command=stop)
-# stopbtn.place(x = 500,y = 82)
-
 endbtn = Button(mainWindow, text="Exit", command=endclicked)
 endbtn.place(x = 590,y = 82)
-
 
 mainWindow.mainloop()
